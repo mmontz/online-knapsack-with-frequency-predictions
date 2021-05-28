@@ -1,0 +1,478 @@
+#include <iostream>
+#include <limits>
+#include <cfloat>
+#include <unordered_map>
+#include <vector>
+#include <queue>
+#include <map>
+#include <iomanip>
+#include <cmath>
+#include <sstream>
+#include <iomanip>
+#include <stdexcept>
+
+using namespace std;
+
+double capacity = 10000;
+
+struct KnapsackStat{
+    double usedCap = 0;
+    double profit = 0;
+    int iStar;
+    KnapsackStat(int val){
+        iStar = val;
+    }
+};
+
+struct Info{
+    double beta = 0;
+    double profit = 0;
+    double usedCap = 0;
+    bool isValid = true;
+};
+
+Info findBeta(priority_queue <pair <int, int>> valCnt, int index, double alpha , vector <int>& lowerBounds , vector <int>& upperBounds, int minVal , int maxVal){
+    double beta = 0.5;
+    double delta = 0.25;
+    double epsilon = 0.001;
+    double sum2 = 0;
+    
+    for (int j=index+1 ; j<=maxVal ; j++){
+        sum2 += j*lowerBounds[j];
+    }
+    
+    Info newInfo;
+    while (!valCnt.empty() && valCnt.top().first>index && newInfo.usedCap < capacity){
+        int count = min(valCnt.top().second , (int)(capacity - newInfo.usedCap));
+        newInfo.usedCap += count;
+        newInfo.profit += count * valCnt.top().first;
+        valCnt.pop();
+    }
+    
+    if (newInfo.usedCap == capacity){
+        newInfo.isValid = false;
+        return newInfo;
+    }
+    while (delta > 0){
+        double usedCap = newInfo.usedCap;
+        double profit = newInfo.profit;
+    //  ((1−β)u+βl elements of index
+        double temp = (1-beta)*(double)upperBounds[index] + beta*(double)lowerBounds[index];
+        double indexCount = min (temp , capacity-usedCap);
+        usedCap += indexCount;
+        profit += indexCount * (double)index;
+    
+        priority_queue <pair <int, int>> restCnt = valCnt;
+    
+        while (!restCnt.empty() && usedCap < capacity){
+           int count = min(restCnt.top().second , (int)(capacity - usedCap));
+           usedCap += count;
+           profit += count * restCnt.top().first;
+           restCnt.pop();
+        }
+        
+        double sum1 = alpha*profit;
+        if (abs(sum1 - sum2 - beta*(double)index*(double)lowerBounds[index]) < epsilon){
+            newInfo.beta = beta;
+            newInfo.profit = profit;
+            newInfo.usedCap = usedCap;
+            return newInfo;
+        }
+        if (sum1 < sum2 + beta*(double)index*(double)lowerBounds[index]){
+            beta -= delta;
+        }
+        else{
+            beta += delta;
+        }
+        delta /=2;
+    }
+    return newInfo;
+}
+
+priority_queue <pair <int , int>> setMprime (int index , vector <int>& lowerBounds , vector <int>& upperBounds , int minVal , int maxVal){
+    priority_queue <pair <int , int>> valCnt;
+    if (index == minVal-1){
+        for (int i=minVal+1 ; i<=maxVal ; i++){
+            if (lowerBounds[i] != 0){
+                valCnt.push({i, lowerBounds[i]});
+            }
+        }
+        return valCnt;
+    }
+    
+    for (int i=minVal ; i<=index ; i++){
+        if (upperBounds[i] != 0){
+            valCnt.push({i, upperBounds[i]});
+        }
+    }
+    for (int i=index+2 ; i<=maxVal ; i++){
+        if (lowerBounds[i] != 0){
+            valCnt.push({i, lowerBounds[i]});
+        }
+    }
+    return valCnt;
+}
+
+priority_queue <pair <int , int>> setM (int index , vector <int>& lowerBounds , vector <int>& upperBounds , int minVal , int maxVal){
+    priority_queue <pair <int , int>> valCnt;
+    if (index == minVal-1){
+        for (int i=minVal ; i<=maxVal ; i++){
+            if (lowerBounds[i] != 0)
+                valCnt.push({i, lowerBounds[i]});
+        }
+        return valCnt;
+    }
+    
+    for (int i=minVal ; i<=index ; i++){
+        if (upperBounds[i] != 0)
+            valCnt.push({i, upperBounds[i]});
+    }
+    
+    for (int i=index+1 ; i<=maxVal ; i++){
+        if (lowerBounds[i] != 0)
+            valCnt.push({i, lowerBounds[i]});
+    }
+    return valCnt;
+}
+
+KnapsackStat findOpt(priority_queue <pair <int, int>> valCnt, int minVal , int maxVal){
+    KnapsackStat newStat(minVal-1);
+    double profit = 0;
+    double usedCap = 0;
+    while (!valCnt.empty() && usedCap < capacity){
+        double count = min(capacity-usedCap , (double)valCnt.top().second);
+        usedCap += count;
+        profit += ((double)(valCnt.top().first))*count;
+        valCnt.pop();
+    }
+    newStat.profit = profit;
+    newStat.usedCap = usedCap;
+    return newStat;
+}
+
+
+void findLowestValToPick (int & lowestVal , Info & newInfo, double alpha , vector <int>& lowerBounds , vector <int> & upperBounds , int minVal , int maxVal){
+    lowestVal = minVal;
+    for (int i=minVal ; i<=maxVal ; i++){
+        double head1 = alpha*findOpt(setM(i-1 , lowerBounds , upperBounds , minVal , maxVal) , minVal , maxVal).profit;
+        double tail1 = alpha*findOpt(setM(i, lowerBounds , upperBounds, minVal , maxVal), minVal , maxVal).profit;
+        
+        double head2 = 0;
+        double tail2 = 0;
+        for (int j=i+1 ; j<=maxVal ; j++){
+            head2 += j*lowerBounds[j];
+        }
+        tail2 = head2+i*lowerBounds[i];
+        if (max (head1 , head2) > min(tail1, tail2)){
+            continue;
+        }
+        
+        //ranges overlap
+        lowestVal = i;
+        priority_queue <pair <int , int>> Mprime = setMprime(i-1, lowerBounds, upperBounds, minVal , maxVal);
+        newInfo = findBeta(Mprime , i, alpha, lowerBounds, upperBounds, minVal , maxVal);
+        return;
+    }
+}
+
+pair <KnapsackStat, Info> phase1 (double alpha, vector <int>& lowerBounds , vector <int>& upperBounds , int minVal , int maxVal){
+    Info optMprimeInfo;
+    int lowestVal;
+    findLowestValToPick(lowestVal, optMprimeInfo, alpha , lowerBounds , upperBounds , minVal , maxVal);
+    
+    KnapsackStat newStat(minVal-1);
+    newStat.iStar = lowestVal;
+    
+    double usedCap = ceil(optMprimeInfo.beta*lowerBounds[lowestVal]);
+    double profit = ceil(optMprimeInfo.beta*lowerBounds[lowestVal])*lowestVal;
+    for (int i=lowestVal+1 ; i<=maxVal ; i++){
+        if (usedCap >= capacity){
+            break;
+        }
+        int count = min((double)lowerBounds[i], capacity-usedCap);
+        usedCap += count;
+        profit += count*i;
+    }
+    newStat.profit = profit;
+    newStat.usedCap = usedCap;
+    return {newStat,optMprimeInfo};
+}
+
+
+vector <double> phase2 (KnapsackStat currStat, Info optMprimeInfo, bool roundUp, double alpha , vector <int>& lowerBounds , vector <int>& upperBounds, int minVal , int maxVal){
+    //set thresholds
+    unordered_map <int , double> optM;
+    vector <double> thresholds (maxVal+1 , 0);
+
+    thresholds[minVal-1] = currStat.usedCap;
+    if (currStat.usedCap >= capacity)
+        return thresholds;
+    optM[currStat.iStar] = findOpt(setM(currStat.iStar , lowerBounds , upperBounds , minVal , maxVal), minVal , maxVal).profit;
+                                  
+    thresholds[currStat.iStar] = (alpha * (optM[currStat.iStar] - optMprimeInfo.profit))/(double)currStat.iStar;
+
+    for (int i=currStat.iStar+1 ; i<=maxVal ; i++){
+        optM[i] = optM.count(i) == 0? findOpt(setM(i , lowerBounds , upperBounds , minVal , maxVal),minVal , maxVal).profit : optM[i];
+        optM[i-1] = optM.count(i-1) == 0? findOpt(setM(i-1 , lowerBounds , upperBounds, minVal , maxVal), minVal , maxVal).profit : optM[i-1];
+        thresholds[i] = (alpha* (optM[i]-optM[i-1]))/(double)i;
+    }
+    if (!roundUp)
+        return thresholds;
+    
+    //round up the thresholds
+    double sum = currStat.usedCap;
+    for (int i=minVal ; i<=maxVal ; i++){
+        if (thresholds[i] == 0){
+            continue;
+        }
+        double temp = thresholds[i];
+        thresholds[i] = ceil(temp+sum) - ceil(sum);
+        sum += temp;
+    }
+
+    return thresholds;
+}
+
+
+KnapsackStat phase3 (vector <double>& items, vector <double>& thresholds, KnapsackStat & currStat , int startIndex, int minVal , int maxVal){
+    map <int , double> thresholdsMap;
+    for (int i=minVal ; i<=maxVal ; i++){
+        if (thresholds[i] != 0){
+            thresholdsMap[i] = thresholds[i];
+        }
+    }
+    
+    for (int i=startIndex ; i<items.size() ; i++){
+        if (currStat.usedCap >= capacity || thresholdsMap.empty())
+            break;
+        auto it = thresholdsMap.lower_bound(items[i]);
+        if (it->first != items[i] && it == thresholdsMap.begin())
+            continue;
+        it = it->first == items[i]? it : next(it , -1);
+        currStat.usedCap++;
+        currStat.profit += items[i];
+        it->second--;
+        if (it->second == 0){
+            thresholdsMap.erase(it);
+        }
+    }
+    return currStat;
+}
+
+
+KnapsackStat ourAlg (vector <double> & onlineItems, vector <double>& thresholds, bool hasPhase3 , bool roundUpInPhase2 , int Phase3StartIndex, double alpha , vector <int>& lowerBounds , vector <int>& upperBounds, int minVal , int maxVal){
+    
+    pair <KnapsackStat, Info> phase1Res = phase1(alpha , lowerBounds , upperBounds , minVal , maxVal);
+    KnapsackStat currStat = phase1Res.first;
+    Info optMprimeInfo = phase1Res.second;
+    thresholds = phase2(currStat , optMprimeInfo , roundUpInPhase2, alpha, lowerBounds , upperBounds, minVal , maxVal);
+    if (!hasPhase3)
+        return currStat;
+    phase3 (onlineItems, thresholds, currStat , Phase3StartIndex, minVal, maxVal);
+    return currStat;
+}
+
+double setAlpha (vector <int>& lowerBounds, vector <int>& upperBounds, int minVal , int maxVal){
+    double alpha = 0.5;
+    double delta = 0.25;
+    double epsilon = 0.001;
+    
+    while (delta > 0){
+        vector <double> thresholds;
+        vector <double> junk;
+        ourAlg(junk , thresholds, false, false , -1, alpha , lowerBounds , upperBounds, minVal , maxVal);
+        double thresholdSum = 0;
+        for (int i=minVal-1; i<=maxVal ; i++){
+            thresholdSum+= thresholds[i];
+        }
+        if (abs(thresholdSum - capacity) <= epsilon)
+            return alpha;
+        
+        if (thresholdSum < capacity)
+            alpha += delta;
+        else
+            alpha -= delta;
+        delta/=2.0;
+    }
+    return alpha;
+}
+
+double psi (double filledFraction, int minVal , int maxVal){
+    return pow ((maxVal*exp(1)/minVal) , filledFraction)*(minVal/exp(1));
+}
+
+KnapsackStat deeparnab (vector <double> &onlineItems, int minVal , int maxVal){
+    double usedCap = 0;
+    double profit = 0;
+
+    for (int i=0 ; i<onlineItems.size() ; i++){
+        if (usedCap ==capacity)
+            break;
+        if (onlineItems[i] >= psi(usedCap/capacity , minVal , maxVal)){
+            usedCap++;
+            profit += onlineItems[i];
+        }
+    }
+    
+    KnapsackStat currStat(minVal-1);
+    currStat.profit = profit;
+    currStat.usedCap = usedCap;
+    return currStat;
+}
+
+void setOnlineOrder (vector <double> & onlineItems , vector <int> lowerBounds, int sigmaL){
+    sigmaL = min(sigmaL ,(int)onlineItems.size());
+    int index = -1;
+    for (int i=0 ; i<onlineItems.size() ; i++){
+        if (index == sigmaL-1){
+            break;
+        }
+        if (lowerBounds[onlineItems[i]] > 0 ){
+            lowerBounds[onlineItems[i]]--;
+            swap (onlineItems[i], onlineItems[++index]);
+        }
+    }
+    
+    sort (onlineItems.begin() , onlineItems.begin()+sigmaL);
+}
+
+struct averageRes{
+    map <int , double> DeeparnabProfits;
+    map <int, double> DeeparnabUsedCap;
+    
+    map <int , double> ourProfits;
+    map <int , double> ourUsedCap;
+    
+    map <int , double> optProfits;
+    map <int , double> optUsedCap;
+    
+    map <int , double> geometricAlpha;
+    averageRes (){
+        for (int minVal = 1 ; minVal <= 100 ; minVal++){
+            DeeparnabProfits[minVal] = 1;
+            DeeparnabUsedCap[minVal] = 1;
+            ourProfits[minVal] = 1;
+            ourUsedCap[minVal] = 1;
+            optProfits[minVal] = 1;
+            optUsedCap[minVal] = 1;
+            geometricAlpha[minVal] = 1;
+        }
+    }
+};
+
+void input1and2(double delta , int sigmaL , vector <int> lowerBounds , vector <int> upperBounds , averageRes & finalRes, int minVal , int maxVal){
+
+    double alpha = setAlpha(lowerBounds , upperBounds, minVal , maxVal);
+    finalRes.geometricAlpha[minVal] *= alpha;
+    
+    priority_queue <pair <int, int>> valueCount;
+    vector <double> onlineItems;
+    int total = 0;
+    
+    // l item of each value arrives first
+    for (int i=minVal ; i<=maxVal ; i++){
+        for (int j=0 ; j<lowerBounds[i] ; j++){
+            onlineItems.push_back(i);
+        }
+    }
+    
+    // the rest of the items arrive
+    for (int i=minVal ; i<=maxVal ; i++){
+        int ni = lowerBounds[i]+rand()%(upperBounds[i]-lowerBounds[i]+1);
+        
+        if (ni!=0){
+            valueCount.push({i,ni});
+        }
+        total += ni;
+        for (int j=0 ; j<ni-lowerBounds[i] ; j++){
+            onlineItems.push_back(i);
+        }
+    }
+
+    random_shuffle(onlineItems.begin(), onlineItems.end());
+    KnapsackStat deeparnabRes = deeparnab(onlineItems, minVal , maxVal);
+    finalRes.DeeparnabProfits[minVal] *= deeparnabRes.profit;
+    finalRes.DeeparnabUsedCap[minVal] *= deeparnabRes.usedCap;
+    
+    KnapsackStat offlineRes = findOpt (valueCount, minVal , maxVal);
+    finalRes.optProfits[minVal] *= offlineRes.profit;
+    finalRes.optUsedCap[minVal] *= offlineRes.usedCap;
+    
+    vector <double> thresholds;
+    setOnlineOrder (onlineItems , lowerBounds , sigmaL);
+    KnapsackStat currStat = ourAlg(onlineItems, thresholds, true, true , sigmaL, alpha , lowerBounds , upperBounds, minVal , maxVal);
+    finalRes.ourProfits[minVal] *= currStat.profit;
+    finalRes.ourUsedCap[minVal] *= currStat.usedCap;
+    
+}
+
+void valRange(){
+    int valGap = 99;
+    double delta = 2;
+    int repeatCount = 10;
+    averageRes finalRes;
+    for (int minVal = 1 ; minVal <= 100 ; minVal++){
+        int maxVal = minVal + valGap;
+    
+        for (int repeat=0 ; repeat<repeatCount ; repeat++){
+            int k = maxVal;
+            vector <int> lowerBounds(k+1 , 0);
+            vector <int> upperBounds(k+1 , 0);
+    
+            int llowerbound = 50;
+            int lupperbound = 150;
+            int sigmaL = 0;
+            for (int i=minVal ; i<=maxVal ; i++){
+                int lowerbound = rand()% (lupperbound-llowerbound+1) + llowerbound;
+                lowerBounds[i] = lowerbound;
+                sigmaL += lowerBounds[i];
+            }
+            for (int i=minVal ; i<=maxVal ; i++){
+                upperBounds[i] = ceil(((double)lowerBounds[i])*(1.0+delta));
+            }
+            input1and2(delta , sigmaL , lowerBounds , upperBounds , finalRes, minVal , maxVal);
+        }
+    }
+        
+    
+    cout << "our competitive ratio: " << endl;
+    for (int minVal = 1 ; minVal <= 100 ; minVal++){
+        cout << finalRes.ourProfits[minVal]/finalRes.optProfits[minVal] << ", ";
+    }
+    cout << endl;
+    
+    
+    cout << "Deeparnab's competitive ratio: " << endl;
+    for (int minVal = 1 ; minVal <= 100 ; minVal++){
+        cout << finalRes.DeeparnabProfits[minVal]/finalRes.optProfits[minVal] << ", ";
+    }
+    cout << endl;
+    
+    cout << "our theoretical competitive ratio" << endl;
+    for (int minVal = 1 ; minVal <= 100 ; minVal++){
+        finalRes.geometricAlpha[minVal] = pow (finalRes.geometricAlpha[minVal],1.0/(double)repeatCount);
+        cout << finalRes.geometricAlpha[minVal] << ", ";
+    }
+    cout << endl;
+    
+
+    cout << "Deeparnab's theoretical competitive ratio: " << endl;
+    for (int minVal = 1 ; minVal <= 100 ; minVal++){
+        int maxVal = minVal + valGap;
+        double ln = log((double)maxVal/(double)minVal) / log(exp(1));
+        cout << 1.0/(ln+1.0) << ", ";
+    }
+    cout << endl;
+    
+
+    cout << "maxVal/minVal ratio" << endl;
+    for (int minVal = 1 ; minVal <= 100 ; minVal++){
+        int maxVal = minVal + valGap;
+        cout << double (maxVal)/ double(minVal) << ", ";
+    }
+    cout << endl;
+}
+
+int main(int argc, const char * argv[]) {
+    valRange();
+}
