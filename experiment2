@@ -406,7 +406,7 @@ void input1and2(double delta , int sigmaL , vector <int> lowerBounds , vector <i
     
 }
 
-void valRange(){
+void setValRange(){
     int valGap = 99;
     double delta = 2;
     int repeatCount = 10;
@@ -474,5 +474,5 @@ void valRange(){
 }
 
 int main(int argc, const char * argv[]) {
-    valRange();
+    setValRange();
 }
